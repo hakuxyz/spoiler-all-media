@@ -58,9 +58,11 @@ function markAll(channelId: string, files: Upload[]): void {
 function SpoilerAllButton({ channelId }: { channelId: string }) {
 	const rerender = useReRender()
 	const files = uploadsFor(channelId)
-	const Icon = lookupGeneratedIconComponent('EyeIcon', 'EyeSlashIcon')
+	const Icon =
+		lookupGeneratedIconComponent('EyeSlashIcon') ??
+		lookupGeneratedIconComponent('EyeIcon')
 
-	if (files.length === 0 || !Icon) return null
+	if (files.length === 0) return null
 
 	return (
 		<TouchableOpacity
@@ -76,7 +78,7 @@ function SpoilerAllButton({ channelId }: { channelId: string }) {
 				marginHorizontal: 4,
 			}}
 		>
-			<Icon size="sm" color="#FFFFFF" />
+			{Icon ? <Icon size="sm" color="#FFFFFF" /> : null}
 		</TouchableOpacity>
 	)
 }
@@ -157,7 +159,7 @@ export default plugin({
 		)
 
 		patchActions<{ default: MemoExoticComponent<FC> }>(
-			'modules/chat_input/native/action_buttons/ChatInputActions.tsx',
+			'modules/chat_input/native/action_buttons/ChatInputRightActions.tsx',
 			cleanup,
 		)
 		cleanup(() => patched.clear())
