@@ -26,7 +26,9 @@ let uploadStore: UploadStore | undefined
 let channelStore: ChannelStore | undefined
 
 function uploadsFor(channelId: string): Upload[] {
-	return uploadStore?.getUploads?.(channelId, 0) ?? []
+	const files = uploadStore?.getUploads?.(channelId, 0) ?? []
+	console.log('[SpoilerAllMedia] uploadsFor', channelId, files.length)
+	return files
 }
 
 function markAll(channelId: string, files: Upload[]): void {
@@ -47,6 +49,7 @@ function markAll(channelId: string, files: Upload[]): void {
 function SpoilerAllButton({ channelId }: { channelId: string }) {
 	const rerender = useReRender()
 	const files = uploadsFor(channelId)
+	console.log('[SpoilerAllMedia] button render', channelId, files.length)
 
 	if (files.length === 0) return null
 
@@ -87,6 +90,11 @@ function insertButton(tree: ReactElement): ReactElement {
 	)
 	const channelId =
 		channelNode?.props.channel?.id ?? channelStore?.getChannelId?.()
+	console.log('[SpoilerAllMedia] insert', {
+		source: channelNode ? 'fiber' : 'store',
+		channelId,
+		children: node.props.children.length,
+	})
 	if (!channelId) return tree
 
 	const children = node.props.children
@@ -106,6 +114,7 @@ function patchActions<T extends { default: MemoExoticComponent<FC> }>(
 ): void {
 	cleanup(
 		getModuleWithImportedPath<T>(path, ({ default: Actions }) => {
+			console.log('[SpoilerAllMedia] actions found', path, !!Actions)
 			if (patched.has(Actions)) return
 			patched.add(Actions)
 			cleanup(
@@ -118,12 +127,14 @@ function patchActions<T extends { default: MemoExoticComponent<FC> }>(
 
 export default plugin({
 	start({ cleanup }) {
+		console.log('[SpoilerAllMedia] start')
 		cleanup(
 			getModules(
 				withProps('getUploads'),
 				exports => {
 					if (!uploadStore && typeof exports?.getUploads === 'function') {
 						uploadStore = exports
+						console.log('[SpoilerAllMedia] uploadStore found')
 					}
 				},
 				{ max: 5 },
@@ -133,10 +144,14 @@ export default plugin({
 				exports => {
 					if (!channelStore && typeof exports?.getChannelId === 'function') {
 						channelStore = exports
+						console.log('[SpoilerAllMedia] channelStore found')
 					}
 				},
 				{ max: 5 },
 			),
+			() => {
+				console.log('[SpoilerAllMedia] stores', !!uploadStore, !!channelStore)
+			},
 			() => {
 				uploadStore = undefined
 				channelStore = undefined
