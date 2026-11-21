@@ -62,6 +62,12 @@ function SpoilerAllButton({ channelId }: { channelId: string }) {
 		lookupGeneratedIconComponent('EyeSlashIcon') ??
 		lookupGeneratedIconComponent('EyeIcon')
 
+	console.log(
+		'[SpoilerAllMedia] files',
+		files.length,
+		JSON.stringify(files.map(f => ({ ...f, uri: undefined }))),
+	)
+
 	if (files.length === 0) return null
 
 	return (
