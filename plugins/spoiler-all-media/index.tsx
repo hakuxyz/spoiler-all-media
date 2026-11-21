@@ -1,15 +1,11 @@
 import { Dispatcher } from '@valenced/discord/common/flux'
-import { Stores } from '@valenced/discord/flux'
-import {
-	getModuleWithImportedPath,
-	lookupModuleWithImportedPath,
-} from '@valenced/discord/utils/modules/finders'
+import { getModuleWithImportedPath } from '@valenced/discord/utils/modules/finders'
+import { getModules } from '@valenced/modules/finders'
+import { withProps } from '@valenced/modules/finders/filters'
 import { after } from '@valenced/patcher'
-import { lookupGeneratedIconComponent } from '@valenced/utils/discord'
 import { findInReactFiber, useReRender } from '@valenced/utils/react'
-import { useEffect, useState } from 'react'
+import { Text, TouchableOpacity } from 'react-native'
 import type { FC, MemoExoticComponent, ReactElement, ReactNode } from 'react'
-import type { ImageStyle, StyleProp } from 'react-native'
 
 type Upload = {
 	filename: string
@@ -24,31 +20,13 @@ type ChannelStore = {
 	getChannelId?: () => string | undefined
 }
 
-type ActionButtonProps = {
-	accessibilityLabel: string
-	IconComponent: FC<{ style: StyleProp<ImageStyle> }>
-	onPress(): void
-}
-
-type ActionButtonModule = {
-	default: FC<ActionButtonProps>
-}
-
-const ChatInputActionButtonPath =
-	'modules/chat_input/native/action_buttons/ChatInputActionButton.tsx'
-
 const patched = new Set<unknown>()
 
-function getUploadStore(): UploadStore {
-	return Stores.UploadAttachmentStore as unknown as UploadStore
-}
-
-function getChannelStore(): ChannelStore {
-	return Stores.SelectedChannelStore as unknown as ChannelStore
-}
+let uploadStore: UploadStore | undefined
+let channelStore: ChannelStore | undefined
 
 function uploadsFor(channelId: string): Upload[] {
-	return getUploadStore()?.getUploads?.(channelId, 0) ?? []
+	return uploadStore?.getUploads?.(channelId, 0) ?? []
 }
 
 function markAll(channelId: string, files: Upload[]): void {
@@ -66,46 +44,33 @@ function markAll(channelId: string, files: Upload[]): void {
 	})
 }
 
-function SpoilerAllButton() {
+function SpoilerAllButton({ channelId }: { channelId: string }) {
 	const rerender = useReRender()
-	const [ActionButton, setActionButton] = useState(
-		() =>
-			lookupModuleWithImportedPath<ActionButtonModule>(
-				ChatInputActionButtonPath,
-			)[0]?.default,
-	)
+	const files = uploadsFor(channelId)
 
-	useEffect(() => {
-		if (ActionButton) return
-		return getModuleWithImportedPath<ActionButtonModule>(
-			ChatInputActionButtonPath,
-			({ default: Button }) => setActionButton(() => Button),
-		)
-	}, [ActionButton])
-
-	const Icon = lookupGeneratedIconComponent(
-		'EyeSlashIcon',
-		'EyeIcon',
-		'ImageIcon',
-	)
-	const channelId = getChannelStore()?.getChannelId?.()
-	const files = channelId ? uploadsFor(channelId) : []
-
-	if (!ActionButton || !Icon || !channelId || files.length === 0) return null
+	if (files.length === 0) return null
 
 	return (
-		<ActionButton
+		<TouchableOpacity
 			accessibilityLabel="Spoiler all media"
-			IconComponent={Icon}
 			onPress={() => {
 				markAll(channelId, files)
 				rerender()
 			}}
-		/>
+			style={{
+				backgroundColor: '#5865F2',
+				paddingHorizontal: 8,
+				paddingVertical: 6,
+				borderRadius: 8,
+				marginHorizontal: 4,
+			}}
+		>
+			<Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' }}>
+				👁 Spoiler all
+			</Text>
+		</TouchableOpacity>
 	)
 }
-
-const button = <SpoilerAllButton key="spoiler-all-media" />
 
 function insertButton(tree: ReactElement): ReactElement {
 	const node = findInReactFiber(
@@ -115,10 +80,23 @@ function insertButton(tree: ReactElement): ReactElement {
 	)
 	if (!node) return tree
 
+	const channelNode = findInReactFiber(
+		tree,
+		(node): node is { props: { channel?: { id?: string } } } =>
+			typeof node.props?.channel?.id === 'string',
+	)
+	const channelId =
+		channelNode?.props.channel?.id ?? channelStore?.getChannelId?.()
+	if (!channelId) return tree
+
 	const children = node.props.children
-	const index = children.indexOf(button)
+	const index = children.findIndex(
+		child => (child as ReactElement | null)?.key === 'spoiler-all-media',
+	)
 	if (index !== -1) children.splice(index, 1)
-	children.push(button)
+	children.push(
+		<SpoilerAllButton key="spoiler-all-media" channelId={channelId} />,
+	)
 	return tree
 }
 
@@ -140,6 +118,31 @@ function patchActions<T extends { default: MemoExoticComponent<FC> }>(
 
 export default plugin({
 	start({ cleanup }) {
+		cleanup(
+			getModules(
+				withProps('getUploads'),
+				exports => {
+					if (!uploadStore && typeof exports?.getUploads === 'function') {
+						uploadStore = exports
+					}
+				},
+				{ max: 5 },
+			),
+			getModules(
+				withProps('getChannelId'),
+				exports => {
+					if (!channelStore && typeof exports?.getChannelId === 'function') {
+						channelStore = exports
+					}
+				},
+				{ max: 5 },
+			),
+			() => {
+				uploadStore = undefined
+				channelStore = undefined
+			},
+		)
+
 		patchActions<{ default: MemoExoticComponent<FC> }>(
 			'modules/chat_input/native/action_buttons/ChatInputActions.tsx',
 			cleanup,
