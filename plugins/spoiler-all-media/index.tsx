@@ -4,8 +4,9 @@ import { getModuleWithImportedPath } from '@valenced/discord/utils/modules/finde
 import { getModules } from '@valenced/modules/finders'
 import { withProps } from '@valenced/modules/finders/filters'
 import { after } from '@valenced/patcher'
+import { lookupGeneratedIconComponent } from '@valenced/utils/discord'
 import { findInReactFiber, useReRender } from '@valenced/utils/react'
-import { Text, TouchableOpacity } from 'react-native'
+import { TouchableOpacity } from 'react-native'
 import type { FC, MemoExoticComponent, ReactElement, ReactNode } from 'react'
 
 type Upload = {
@@ -27,19 +28,16 @@ let uploadStore: UploadStore | undefined
 const channelStores: ChannelStore[] = []
 
 function currentChannelId(): string | undefined {
-	for (const [index, store] of channelStores.entries()) {
+	for (const store of channelStores) {
 		try {
 			const id = store.getChannelId?.()
-			console.log('[SpoilerAllMedia] channel candidate', index, id)
 			if (typeof id === 'string' && id.length > 0) return id
 		} catch {}
 	}
 }
 
 function uploadsFor(channelId: string): Upload[] {
-	const files = uploadStore?.getUploads?.(channelId, 0) ?? []
-	console.log('[SpoilerAllMedia] uploadsFor', channelId, files.length)
-	return files
+	return uploadStore?.getUploads?.(channelId, 0) ?? []
 }
 
 function markAll(channelId: string, files: Upload[]): void {
@@ -60,9 +58,9 @@ function markAll(channelId: string, files: Upload[]): void {
 function SpoilerAllButton({ channelId }: { channelId: string }) {
 	const rerender = useReRender()
 	const files = uploadsFor(channelId)
-	console.log('[SpoilerAllMedia] button render', channelId, files.length)
+	const Icon = lookupGeneratedIconComponent('EyeIcon', 'EyeSlashIcon')
 
-	if (files.length === 0) return null
+	if (files.length === 0 || !Icon) return null
 
 	return (
 		<TouchableOpacity
@@ -73,15 +71,12 @@ function SpoilerAllButton({ channelId }: { channelId: string }) {
 			}}
 			style={{
 				backgroundColor: '#5865F2',
-				paddingHorizontal: 8,
-				paddingVertical: 6,
+				padding: 8,
 				borderRadius: 8,
 				marginHorizontal: 4,
 			}}
 		>
-			<Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' }}>
-				👁 Spoiler all
-			</Text>
+			<Icon size="sm" color="#FFFFFF" />
 		</TouchableOpacity>
 	)
 }
@@ -100,12 +95,6 @@ function insertButton(tree: ReactElement): ReactElement {
 			typeof node.props?.channel?.id === 'string',
 	)
 	const channelId = channelNode?.props.channel?.id ?? currentChannelId()
-	console.log('[SpoilerAllMedia] insert', {
-		source: channelNode ? 'fiber' : 'store',
-		channelId,
-		stores: channelStores.length,
-		children: node.props.children.length,
-	})
 	if (!channelId) return tree
 
 	const children = node.props.children
@@ -125,7 +114,6 @@ function patchActions<T extends { default: MemoExoticComponent<FC> }>(
 ): void {
 	cleanup(
 		getModuleWithImportedPath<T>(path, ({ default: Actions }) => {
-			console.log('[SpoilerAllMedia] actions found', path, !!Actions)
 			if (patched.has(Actions)) return
 			patched.add(Actions)
 			cleanup(
@@ -138,7 +126,6 @@ function patchActions<T extends { default: MemoExoticComponent<FC> }>(
 
 export default plugin({
 	start({ cleanup }) {
-		console.log('[SpoilerAllMedia] start')
 		const named = Stores.SelectedChannelStore as unknown as ChannelStore
 		if (named && !channelStores.includes(named)) channelStores.push(named)
 		cleanup(
@@ -147,7 +134,6 @@ export default plugin({
 				exports => {
 					if (!uploadStore && typeof exports?.getUploads === 'function') {
 						uploadStore = exports
-						console.log('[SpoilerAllMedia] uploadStore found')
 					}
 				},
 				{ max: 5 },
@@ -165,13 +151,6 @@ export default plugin({
 				{ max: 20 },
 			),
 			() => {
-				console.log(
-					'[SpoilerAllMedia] stores',
-					!!uploadStore,
-					channelStores.length,
-				)
-			},
-			() => {
 				uploadStore = undefined
 				channelStores.length = 0
 			},
@@ -179,10 +158,6 @@ export default plugin({
 
 		patchActions<{ default: MemoExoticComponent<FC> }>(
 			'modules/chat_input/native/action_buttons/ChatInputActions.tsx',
-			cleanup,
-		)
-		patchActions<{ default: MemoExoticComponent<FC> }>(
-			'modules/chat_input/native/action_buttons/ChatInputRightActions.tsx',
 			cleanup,
 		)
 		cleanup(() => patched.clear())
