@@ -4,6 +4,7 @@
   "description": "Repository for SpoilerAllMedia plugin",
   "plugins": {
     "SpoilerAllMedia": {
+      "id": "SpoilerAllMedia",
       "name": "SpoilerAllMedia",
       "description": "Spoiler all media in a message you are sending with one button press",
       "version": "1.0.0",
