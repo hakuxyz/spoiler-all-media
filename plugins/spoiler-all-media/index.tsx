@@ -39,17 +39,16 @@ const ChatInputActionButtonPath =
 
 const patched = new Set<unknown>()
 
-const uploadStore = Stores.UploadAttachmentStore as unknown as UploadStore
-const channelStore = Stores.SelectedChannelStore as unknown as ChannelStore
+function getUploadStore(): UploadStore {
+	return Stores.UploadAttachmentStore as unknown as UploadStore
+}
 
-const Icon = lookupGeneratedIconComponent(
-	'EyeSlashIcon',
-	'EyeIcon',
-	'ImageIcon',
-)
+function getChannelStore(): ChannelStore {
+	return Stores.SelectedChannelStore as unknown as ChannelStore
+}
 
 function uploadsFor(channelId: string): Upload[] {
-	return uploadStore?.getUploads?.(channelId, 0) ?? []
+	return getUploadStore()?.getUploads?.(channelId, 0) ?? []
 }
 
 function markAll(channelId: string, files: Upload[]): void {
@@ -84,7 +83,12 @@ function SpoilerAllButton() {
 		)
 	}, [ActionButton])
 
-	const channelId = channelStore?.getChannelId?.()
+	const Icon = lookupGeneratedIconComponent(
+		'EyeSlashIcon',
+		'EyeIcon',
+		'ImageIcon',
+	)
+	const channelId = getChannelStore()?.getChannelId?.()
 	const files = channelId ? uploadsFor(channelId) : []
 
 	if (!ActionButton || !Icon || !channelId || files.length === 0) return null
