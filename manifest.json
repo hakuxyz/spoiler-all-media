@@ -1,0 +1,11 @@
+{
+  "name": "SpoilerAllMedia",
+  "description": "Spoiler all media in a message you are sending with one button press",
+  "authors": [
+    {
+      "name": "YourName",
+      "id": "0"
+    }
+  ],
+  "main": "index.js"
+}
