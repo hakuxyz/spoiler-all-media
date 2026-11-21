@@ -1,13 +1,15 @@
-import { getModules } from '@valenced/modules/finders'
+import { Dispatcher } from '@valenced/discord/common/flux'
+import { Stores } from '@valenced/discord/flux'
 import {
-	createFilterGenerator,
-	FilterScopes,
-	withProps,
-} from '@valenced/modules/finders/filters'
-import { afterJSX } from '@valenced/react/jsx-runtime'
-import { Children, cloneElement, createElement, useReducer } from 'react'
-import { Text, TouchableOpacity } from 'react-native'
-import type { ElementType, ReactElement } from 'react'
+	getModuleWithImportedPath,
+	lookupModuleWithImportedPath,
+} from '@valenced/discord/utils/modules/finders'
+import { after } from '@valenced/patcher'
+import { lookupGeneratedIconComponent } from '@valenced/utils/discord'
+import { findInReactFiber, useReRender } from '@valenced/utils/react'
+import { useEffect, useState } from 'react'
+import type { FC, MemoExoticComponent, ReactElement, ReactNode } from 'react'
+import type { ImageStyle, StyleProp } from 'react-native'
 
 type Upload = {
 	filename: string
@@ -15,174 +17,133 @@ type Upload = {
 }
 
 type UploadStore = {
-	getUploads?: (channelId: string, draftType: number) => Upload[] | undefined
-	emitChange?: () => void
+	getUploads?: (channelId: string, draftType: number) => Upload[]
 }
 
 type ChannelStore = {
 	getChannelId?: () => string | undefined
 }
 
-type Cleanup = (...fns: Array<() => unknown>) => void
-
-const ACTION_COMPONENTS = ['ChatInputActions', 'ChatInputRightActions']
-
-const patched = new Set<ElementType>()
-
-let uploadStore: UploadStore | undefined
-let channelStore: ChannelStore | undefined
-
-function isRecord(value: unknown): value is Record<string, any> {
-	return typeof value === 'object' && value !== null
+type ActionButtonProps = {
+	accessibilityLabel: string
+	IconComponent: FC<{ style: StyleProp<ImageStyle> }>
+	onPress(): void
 }
 
-function componentName(value: any): string | undefined {
-	return value?.displayName ?? value?.name
+type ActionButtonModule = {
+	default: FC<ActionButtonProps>
 }
 
-function resolveComponent(exports: any, name: string): any {
-	if (!isRecord(exports) && typeof exports !== 'function') return undefined
+const ChatInputActionButtonPath =
+	'modules/chat_input/native/action_buttons/ChatInputActionButton.tsx'
 
-	const candidates = [
-		exports?.[name]?.type,
-		exports?.default?.[name]?.type,
-		exports?.default?.type,
-		exports?.[name],
-		exports?.default?.[name],
-		exports?.default,
-		exports,
-	]
+const patched = new Set<unknown>()
 
-	for (const candidate of candidates) {
-		if (componentName(candidate) === name) return candidate
-	}
-	return undefined
-}
+const uploadStore = Stores.UploadAttachmentStore as unknown as UploadStore
+const channelStore = Stores.SelectedChannelStore as unknown as ChannelStore
 
-const withComponentName = createFilterGenerator<[name: string]>(
-	([name], _id, exports) => {
-		try {
-			return Boolean(resolveComponent(exports, name))
-		} catch {
-			return false
-		}
-	},
-	([name]) => `spoilerAllMedia.componentName(${name})`,
-	FilterScopes.Initialized,
+const Icon = lookupGeneratedIconComponent(
+	'EyeSlashIcon',
+	'EyeIcon',
+	'ImageIcon',
 )
 
-function markAll(channelId: string): void {
-	const files = uploadStore?.getUploads?.(channelId, 0) ?? []
-	for (const file of files) {
-		if (!file) continue
-		if (!file.filename?.startsWith('SPOILER_')) {
-			file.filename = `SPOILER_${file.filename}`
-		}
-		file.spoiler = true
-	}
-	if (typeof uploadStore?.emitChange === 'function') uploadStore.emitChange()
+function uploadsFor(channelId: string): Upload[] {
+	return uploadStore?.getUploads?.(channelId, 0) ?? []
 }
 
-function SpoilerAllButton({ channelId }: { channelId: string }) {
-	const [, rerender] = useReducer((value: number) => value + 1, 0)
-	const files = uploadStore?.getUploads?.(channelId, 0) ?? []
+function markAll(channelId: string, files: Upload[]): void {
+	Dispatcher.dispatch({
+		type: 'UPLOAD_ATTACHMENT_SET_UPLOADS',
+		channelId,
+		draftType: 0,
+		uploads: files.map(file => ({
+			...file,
+			filename: file.filename?.startsWith('SPOILER_')
+				? file.filename
+				: `SPOILER_${file.filename}`,
+			spoiler: true,
+		})),
+	})
+}
 
-	if (files.length === 0) return null
-
-	const allSpoilers = files.every(
-		file => file?.spoiler === true || file?.filename?.startsWith('SPOILER_'),
+function SpoilerAllButton() {
+	const rerender = useReRender()
+	const [ActionButton, setActionButton] = useState(
+		() =>
+			lookupModuleWithImportedPath<ActionButtonModule>(
+				ChatInputActionButtonPath,
+			)[0]?.default,
 	)
 
-	return createElement(
-		TouchableOpacity,
-		{
-			onPress: () => {
-				markAll(channelId)
+	useEffect(() => {
+		if (ActionButton) return
+		return getModuleWithImportedPath<ActionButtonModule>(
+			ChatInputActionButtonPath,
+			({ default: Button }) => setActionButton(() => Button),
+		)
+	}, [ActionButton])
+
+	const channelId = channelStore?.getChannelId?.()
+	const files = channelId ? uploadsFor(channelId) : []
+
+	if (!ActionButton || !Icon || !channelId || files.length === 0) return null
+
+	return (
+		<ActionButton
+			accessibilityLabel="Spoiler all media"
+			IconComponent={Icon}
+			onPress={() => {
+				markAll(channelId, files)
 				rerender()
-			},
-			style: {
-				backgroundColor: allSpoilers ? '#43b581' : '#5865F2',
-				paddingHorizontal: 10,
-				paddingVertical: 6,
-				borderRadius: 16,
-				marginHorizontal: 6,
-			},
-		},
-		createElement(
-			Text,
-			{ style: { color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' } },
-			allSpoilers ? 'All spoiled' : `Spoiler all (${files.length})`,
-		),
+			}}
+		/>
 	)
 }
 
-function install(exports: any, name: string, cleanup: Cleanup): void {
-	const component = resolveComponent(exports, name)
-	if (!component || patched.has(component)) return
-	patched.add(component)
+const button = <SpoilerAllButton key="spoiler-all-media" />
 
-	const unpatch = afterJSX(component as ElementType, element => {
-		try {
-			const el = element as ReactElement<Record<string, unknown>>
-			const props = el.props ?? {}
-			const channelId = channelStore?.getChannelId?.()
-			if (!channelId) return element as never
+function insertButton(tree: ReactElement): ReactElement {
+	const node = findInReactFiber(
+		tree,
+		(node): node is { props: { children: ReactNode[] } } =>
+			Array.isArray(node.props?.children),
+	)
+	if (!node) return tree
 
-			const children = Children.toArray(props.children as any)
-			return cloneElement(el, {
-				...props,
-				children: [...children, createElement(SpoilerAllButton, { channelId })],
-			} as any) as never
-		} catch {
-			return element as never
-		}
-	})
+	const children = node.props.children
+	const index = children.indexOf(button)
+	if (index !== -1) children.splice(index, 1)
+	children.push(button)
+	return tree
+}
 
-	cleanup(() => {
-		patched.delete(component)
-		unpatch()
-	})
+function patchActions<T extends { default: MemoExoticComponent<FC> }>(
+	path: string,
+	cleanup: (...fns: Array<() => unknown>) => void,
+): void {
+	cleanup(
+		getModuleWithImportedPath<T>(path, ({ default: Actions }) => {
+			if (patched.has(Actions)) return
+			patched.add(Actions)
+			cleanup(
+				after(Actions, 'type', tree => insertButton(tree as ReactElement)),
+				() => patched.delete(Actions),
+			)
+		}),
+	)
 }
 
 export default plugin({
 	start({ cleanup }) {
-		cleanup(
-			getModules(
-				withProps('getUploads'),
-				exports => {
-					if (!uploadStore && typeof exports?.getUploads === 'function') {
-						uploadStore = exports
-					}
-				},
-				{ max: 5 },
-			),
+		patchActions<{ default: MemoExoticComponent<FC> }>(
+			'modules/chat_input/native/action_buttons/ChatInputActions.tsx',
+			cleanup,
 		)
-
-		cleanup(
-			getModules(
-				withProps('getChannelId'),
-				exports => {
-					if (!channelStore && typeof exports?.getChannelId === 'function') {
-						channelStore = exports
-					}
-				},
-				{ max: 5 },
-			),
+		patchActions<{ default: MemoExoticComponent<FC> }>(
+			'modules/chat_input/native/action_buttons/ChatInputRightActions.tsx',
+			cleanup,
 		)
-
-		cleanup(() => {
-			uploadStore = undefined
-			channelStore = undefined
-		})
-
-		for (const name of ACTION_COMPONENTS) {
-			cleanup(
-				getModules(
-					withComponentName(name),
-					exports => install(exports, name, cleanup),
-					{ max: 5 },
-				),
-			)
-		}
+		cleanup(() => patched.clear())
 	},
 })
