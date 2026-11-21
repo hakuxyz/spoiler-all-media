@@ -1,4 +1,5 @@
 import { Dispatcher } from '@valenced/discord/common/flux'
+import { Stores } from '@valenced/discord/flux'
 import { getModuleWithImportedPath } from '@valenced/discord/utils/modules/finders'
 import { getModules } from '@valenced/modules/finders'
 import { withProps } from '@valenced/modules/finders/filters'
@@ -23,7 +24,17 @@ type ChannelStore = {
 const patched = new Set<unknown>()
 
 let uploadStore: UploadStore | undefined
-let channelStore: ChannelStore | undefined
+const channelStores: ChannelStore[] = []
+
+function currentChannelId(): string | undefined {
+	for (const [index, store] of channelStores.entries()) {
+		try {
+			const id = store.getChannelId?.()
+			console.log('[SpoilerAllMedia] channel candidate', index, id)
+			if (typeof id === 'string' && id.length > 0) return id
+		} catch {}
+	}
+}
 
 function uploadsFor(channelId: string): Upload[] {
 	const files = uploadStore?.getUploads?.(channelId, 0) ?? []
@@ -88,11 +99,11 @@ function insertButton(tree: ReactElement): ReactElement {
 		(node): node is { props: { channel?: { id?: string } } } =>
 			typeof node.props?.channel?.id === 'string',
 	)
-	const channelId =
-		channelNode?.props.channel?.id ?? channelStore?.getChannelId?.()
+	const channelId = channelNode?.props.channel?.id ?? currentChannelId()
 	console.log('[SpoilerAllMedia] insert', {
 		source: channelNode ? 'fiber' : 'store',
 		channelId,
+		stores: channelStores.length,
 		children: node.props.children.length,
 	})
 	if (!channelId) return tree
@@ -128,6 +139,8 @@ function patchActions<T extends { default: MemoExoticComponent<FC> }>(
 export default plugin({
 	start({ cleanup }) {
 		console.log('[SpoilerAllMedia] start')
+		const named = Stores.SelectedChannelStore as unknown as ChannelStore
+		if (named && !channelStores.includes(named)) channelStores.push(named)
 		cleanup(
 			getModules(
 				withProps('getUploads'),
@@ -142,19 +155,25 @@ export default plugin({
 			getModules(
 				withProps('getChannelId'),
 				exports => {
-					if (!channelStore && typeof exports?.getChannelId === 'function') {
-						channelStore = exports
-						console.log('[SpoilerAllMedia] channelStore found')
+					if (
+						typeof exports?.getChannelId === 'function' &&
+						!channelStores.includes(exports)
+					) {
+						channelStores.push(exports)
 					}
 				},
-				{ max: 5 },
+				{ max: 20 },
 			),
 			() => {
-				console.log('[SpoilerAllMedia] stores', !!uploadStore, !!channelStore)
+				console.log(
+					'[SpoilerAllMedia] stores',
+					!!uploadStore,
+					channelStores.length,
+				)
 			},
 			() => {
 				uploadStore = undefined
-				channelStore = undefined
+				channelStores.length = 0
 			},
 		)
 
