@@ -41,17 +41,17 @@ function uploadsFor(channelId: string): Upload[] {
 }
 
 function markAll(channelId: string, files: Upload[]): void {
+	for (const file of files) {
+		if (!file.filename?.startsWith('SPOILER_')) {
+			file.filename = `SPOILER_${file.filename}`
+		}
+		file.spoiler = true
+	}
 	Dispatcher.dispatch({
 		type: 'UPLOAD_ATTACHMENT_SET_UPLOADS',
 		channelId,
 		draftType: 0,
-		uploads: files.map(file => ({
-			...file,
-			filename: file.filename?.startsWith('SPOILER_')
-				? file.filename
-				: `SPOILER_${file.filename}`,
-			spoiler: true,
-		})),
+		uploads: files,
 	})
 }
 
@@ -62,13 +62,7 @@ function SpoilerAllButton({ channelId }: { channelId: string }) {
 		lookupGeneratedIconComponent('EyeSlashIcon') ??
 		lookupGeneratedIconComponent('EyeIcon')
 
-	console.log(
-		'[SpoilerAllMedia] files',
-		files.length,
-		JSON.stringify(files.map(f => ({ ...f, uri: undefined }))),
-	)
-
-	if (files.length === 0) return null
+	if (files.length === 0 || files.every(file => file.spoiler)) return null
 
 	return (
 		<TouchableOpacity
