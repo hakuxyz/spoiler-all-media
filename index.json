@@ -1,14 +1,30 @@
 {
   "format": 1,
-  "name": "SpoilerAllMedia Plugins",
-  "description": "Repository for SpoilerAllMedia plugin",
+  "name": "Spoiler All Media",
+  "description": "Valenced port of the Spoiler All Media plugin.",
   "plugins": {
-    "SpoilerAllMedia": {
-      "name": "SpoilerAllMedia",
+    "kacpi4243.spoiler-all-media": {
+      "name": "Spoiler All Media",
       "description": "Spoiler all media in a message you are sending with one button press",
-      "version": "1.0.0",
-      "manifest": "https://raw.githubusercontent.com/kacpi4243/SpoilerAllMedia/refs/heads/main/manifest.json",
-      "main": "https://raw.githubusercontent.com/kacpi4243/SpoilerAllMedia/refs/heads/main/index.js"
+      "author": "kacpi4243 (https://github.com/kacpi4243 \"GitHub\")",
+      "channels": {
+        "latest": "1.0.0"
+      },
+      "versions": {
+        "1.0.0": {
+          "url": "https://hakuxyz.github.io/spoiler-all-media/kacpi4243.spoiler-all-media@1.0.0.zip",
+          "sha256": "a4cf4679ebcc1952a594dd9d4615d2edecee0f336645e116308398c4bde9acab",
+          "size": 1569,
+          "dependencies": {
+            "valenced.api": {
+              "version": ">=1 <2"
+            },
+            "discord": {
+              "version": "*"
+            }
+          }
+        }
+      }
     }
   }
 }
